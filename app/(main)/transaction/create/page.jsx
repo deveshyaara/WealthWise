@@ -5,7 +5,10 @@ import { getTransaction } from "@/actions/transaction";
 
 export default async function AddTransactionPage({ searchParams }) {
   const accounts = await getUserAccounts();
-  const editId = searchParams?.edit;
+  
+  // In Next.js 15, searchParams needs to be awaited
+  const params = await searchParams;
+  const editId = params?.edit;
 
   let initialData = null;
   if (editId) {

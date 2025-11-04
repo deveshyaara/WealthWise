@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { CalendarIcon, Loader2 } from "lucide-react";
@@ -94,19 +94,45 @@ export function AddTransactionForm({
     }
   };
 
-  const handleScanComplete = (scannedData) => {
+  const handleScanComplete = useCallback((scannedData) => {
     if (scannedData) {
-      setValue("amount", scannedData.amount.toString());
-      setValue("date", new Date(scannedData.date));
+      console.log("Scanned data received in form:", scannedData);
+      
+      // Safely set amount if it exists and is valid
+      if (scannedData.amount !== null && scannedData.amount !== undefined) {
+        setValue("amount", scannedData.amount.toString());
+      }
+      
+      // Safely set date if it exists and is valid
+      if (scannedData.date) {
+        try {
+          const parsedDate = new Date(scannedData.date);
+          if (!isNaN(parsedDate.getTime())) {
+            setValue("date", parsedDate);
+          }
+        } catch (error) {
+          console.error("Invalid date format:", scannedData.date);
+        }
+      }
+      
+      // Set description if available
       if (scannedData.description) {
         setValue("description", scannedData.description);
       }
+      
+      // Set merchant name if available
+      if (scannedData.merchant) {
+        setValue("description", scannedData.merchant);
+      }
+      
+      // Set category if available
       if (scannedData.category) {
         setValue("category", scannedData.category);
       }
+      
       toast.success("Receipt scanned successfully");
     }
-  };
+  }, [setValue]);
 
   useEffect(() => {
     if (transactionResult?.success && !transactionLoading) {
@@ -118,7 +144,7 @@ export function AddTransactionForm({
       reset();
       router.push(`/account/${transactionResult.data.accountId}`);
     }
-  }, [transactionResult, transactionLoading, editMode]);
+  }, [transactionResult, transactionLoading, editMode, reset, router]);
 
   const type = watch("type");
   const isRecurring = watch("isRecurring");
