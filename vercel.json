@@ -1,0 +1,10 @@
+{
+  "buildCommand": "prisma generate && prisma migrate deploy && next build",
+  "installCommand": "npm install --legacy-peer-deps",
+  "framework": "nextjs",
+  "regions": ["sin1"],
+  "env": {
+    "DATABASE_URL": "@database_url",
+    "DIRECT_URL": "@direct_url"
+  }
+}
