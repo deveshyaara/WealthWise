@@ -21,7 +21,7 @@ export async function getUserAccounts() {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
-  const user = await db.user.findUnique({
+  const user = await db.users.findUnique({
     where: { clerkUserId: userId },
   });
 
@@ -30,7 +30,7 @@ export async function getUserAccounts() {
   }
 
   try {
-    const accounts = await db.account.findMany({
+    const accounts = await db.accounts.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: "desc" },
       include: {
@@ -82,7 +82,7 @@ export async function createAccount(data) {
       throw new Error("Request blocked");
     }
 
-    const user = await db.user.findUnique({
+    const user = await db.users.findUnique({
       where: { clerkUserId: userId },
     });
 
@@ -97,7 +97,7 @@ export async function createAccount(data) {
     }
 
     // Check if this is the user's first account
-    const existingAccounts = await db.account.findMany({
+    const existingAccounts = await db.accounts.findMany({
       where: { userId: user.id },
     });
 
@@ -108,14 +108,14 @@ export async function createAccount(data) {
 
     // If this account should be default, unset other default accounts
     if (shouldBeDefault) {
-      await db.account.updateMany({
+      await db.accounts.updateMany({
         where: { userId: user.id, isDefault: true },
         data: { isDefault: false },
       });
     }
 
     // Create new account
-    const account = await db.account.create({
+    const account = await db.accounts.create({
       data: {
         ...data,
         balance: balanceFloat,
@@ -138,7 +138,7 @@ export async function getDashboardData() {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
-  const user = await db.user.findUnique({
+  const user = await db.users.findUnique({
     where: { clerkUserId: userId },
   });
 
@@ -147,10 +147,11 @@ export async function getDashboardData() {
   }
 
   // Get all user transactions
-  const transactions = await db.transaction.findMany({
+  const transactions = await db.transactions.findMany({
     where: { userId: user.id },
     orderBy: { date: "desc" },
   });
 
   return transactions.map(serializeTransaction);
 }
+

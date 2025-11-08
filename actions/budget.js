@@ -9,7 +9,7 @@ export async function getCurrentBudget(accountId) {
     const { userId } = await auth();
     if (!userId) throw new Error("Unauthorized");
 
-    const user = await db.user.findUnique({
+    const user = await db.users.findUnique({
       where: { clerkUserId: userId },
     });
 
@@ -17,7 +17,7 @@ export async function getCurrentBudget(accountId) {
       throw new Error("User not found");
     }
 
-    const budget = await db.budget.findFirst({
+    const budget = await db.budgets.findFirst({
       where: {
         userId: user.id,
       },
@@ -36,7 +36,7 @@ export async function getCurrentBudget(accountId) {
       0
     );
 
-    const expenses = await db.transaction.aggregate({
+    const expenses = await db.transactions.aggregate({
       where: {
         userId: user.id,
         type: "EXPENSE",
@@ -68,14 +68,14 @@ export async function updateBudget(amount) {
     const { userId } = await auth();
     if (!userId) throw new Error("Unauthorized");
 
-    const user = await db.user.findUnique({
+    const user = await db.users.findUnique({
       where: { clerkUserId: userId },
     });
 
     if (!user) throw new Error("User not found");
 
     // Update or create budget
-    const budget = await db.budget.upsert({
+    const budget = await db.budgets.upsert({
       where: {
         userId: user.id,
       },
@@ -98,3 +98,4 @@ export async function updateBudget(amount) {
     return { success: false, error: error.message };
   }
 }
+

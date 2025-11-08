@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import aj from "@/lib/arcjet";
 import { request } from "@arcjet/next";
+import crypto from "crypto";
 
 const serializeAmount = (obj) => ({
   ...obj,
@@ -44,7 +45,7 @@ export async function createTransaction(data) {
       throw new Error("Request blocked");
     }
 
-    const user = await db.user.findUnique({
+    const user = await db.users.findUnique({
       where: { clerkUserId: userId },
     });
 
@@ -52,7 +53,7 @@ export async function createTransaction(data) {
       throw new Error("User not found");
     }
 
-    const account = await db.account.findUnique({
+    const account = await db.accounts.findUnique({
       where: {
         id: data.accountId,
         userId: user.id,
@@ -69,10 +70,12 @@ export async function createTransaction(data) {
 
     // Create transaction and update account balance
     const transaction = await db.$transaction(async (tx) => {
-      const newTransaction = await tx.transaction.create({
+      const newTransaction = await tx.transactions.create({
         data: {
+          id: crypto.randomUUID(),
           ...data,
           userId: user.id,
+          updatedAt: new Date(),
           nextRecurringDate:
             data.isRecurring && data.recurringInterval
               ? calculateNextRecurringDate(data.date, data.recurringInterval)
@@ -80,7 +83,7 @@ export async function createTransaction(data) {
         },
       });
 
-      await tx.account.update({
+      await tx.accounts.update({
         where: { id: data.accountId },
         data: { balance: newBalance },
       });
@@ -101,13 +104,13 @@ export async function getTransaction(id) {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
-  const user = await db.user.findUnique({
+  const user = await db.users.findUnique({
     where: { clerkUserId: userId },
   });
 
   if (!user) throw new Error("User not found");
 
-  const transaction = await db.transaction.findUnique({
+  const transaction = await db.transactions.findUnique({
     where: {
       id,
       userId: user.id,
@@ -124,14 +127,14 @@ export async function updateTransaction(id, data) {
     const { userId } = await auth();
     if (!userId) throw new Error("Unauthorized");
 
-    const user = await db.user.findUnique({
+    const user = await db.users.findUnique({
       where: { clerkUserId: userId },
     });
 
     if (!user) throw new Error("User not found");
 
     // Get original transaction to calculate balance change
-    const originalTransaction = await db.transaction.findUnique({
+    const originalTransaction = await db.transactions.findUnique({
       where: {
         id,
         userId: user.id,
@@ -156,7 +159,7 @@ export async function updateTransaction(id, data) {
 
     // Update transaction and account balance in a transaction
     const transaction = await db.$transaction(async (tx) => {
-      const updated = await tx.transaction.update({
+      const updated = await tx.transactions.update({
         where: {
           id,
           userId: user.id,
@@ -171,7 +174,7 @@ export async function updateTransaction(id, data) {
       });
 
       // Update account balance
-      await tx.account.update({
+      await tx.accounts.update({
         where: { id: data.accountId },
         data: {
           balance: {
@@ -198,7 +201,7 @@ export async function getUserTransactions(query = {}) {
     const { userId } = await auth();
     if (!userId) throw new Error("Unauthorized");
 
-    const user = await db.user.findUnique({
+    const user = await db.users.findUnique({
       where: { clerkUserId: userId },
     });
 
@@ -206,7 +209,7 @@ export async function getUserTransactions(query = {}) {
       throw new Error("User not found");
     }
 
-    const transactions = await db.transaction.findMany({
+    const transactions = await db.transactions.findMany({
       where: {
         userId: user.id,
         ...query,
@@ -388,3 +391,4 @@ function calculateNextRecurringDate(startDate, interval) {
 
   return date;
 }
+
