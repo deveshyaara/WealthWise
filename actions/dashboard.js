@@ -117,10 +117,12 @@ export async function createAccount(data) {
     // Create new account
     const account = await db.accounts.create({
       data: {
+        id: crypto.randomUUID(),
         ...data,
         balance: balanceFloat,
         userId: user.id,
         isDefault: shouldBeDefault, // Override the isDefault based on our logic
+        updatedAt: new Date(),
       },
     });
 
