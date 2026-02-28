@@ -69,10 +69,13 @@ export async function bulkDeleteTransactions(transactionIds) {
 
     // Group transactions by account to update balances
     const accountBalanceChanges = transactions.reduce((acc, transaction) => {
+      const amount = typeof transaction.amount === 'object' && transaction.amount.toNumber
+        ? transaction.amount.toNumber()
+        : Number(transaction.amount);
       const change =
         transaction.type === "EXPENSE"
-          ? transaction.amount
-          : -transaction.amount;
+          ? amount
+          : -amount;
       acc[transaction.accountId] = (acc[transaction.accountId] || 0) + change;
       return acc;
     }, {});
@@ -124,26 +127,29 @@ export async function updateDefaultAccount(accountId) {
       throw new Error("User not found");
     }
 
-    // First, unset any existing default account
-    await db.accounts.updateMany({
-      where: {
-        userId: user.id,
-        isDefault: true,
-      },
-      data: { isDefault: false },
-    });
+    // Use a transaction to prevent race conditions
+    const account = await db.$transaction(async (tx) => {
+      // First, unset any existing default account
+      await tx.accounts.updateMany({
+        where: {
+          userId: user.id,
+          isDefault: true,
+        },
+        data: { isDefault: false },
+      });
 
-    // Then set the new default account
-    const account = await db.accounts.update({
-      where: {
-        id: accountId,
-        userId: user.id,
-      },
-      data: { isDefault: true },
+      // Then set the new default account
+      return await tx.accounts.update({
+        where: {
+          id: accountId,
+          userId: user.id,
+        },
+        data: { isDefault: true },
+      });
     });
 
     revalidatePath("/dashboard");
-    return { success: true, data: serializeTransaction(account) };
+    return { success: true, data: serializeDecimal(account) };
   } catch (error) {
     return { success: false, error: error.message };
   }

@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import { getUserAccounts } from "@/actions/dashboard";
 import { getDashboardData } from "@/actions/dashboard";
 import { getCurrentBudget } from "@/actions/budget";
@@ -10,10 +9,21 @@ import { Plus } from "lucide-react";
 import { DashboardOverview } from "./_components/transaction-overview";
 
 export default async function DashboardPage() {
-  const [accounts, transactions] = await Promise.all([
-    getUserAccounts(),
-    getDashboardData(),
-  ]);
+  let accounts = [];
+  let transactions = [];
+
+  try {
+    [accounts, transactions] = await Promise.all([
+      getUserAccounts(),
+      getDashboardData(),
+    ]);
+  } catch (error) {
+    console.error("Failed to load dashboard data:", error.message);
+  }
+
+  // Ensure accounts is always an array
+  accounts = accounts || [];
+  transactions = transactions || [];
 
   const defaultAccount = accounts?.find((account) => account.isDefault);
 

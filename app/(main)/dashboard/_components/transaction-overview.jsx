@@ -130,9 +130,9 @@ export function DashboardOverview({ accounts, transactions }) {
                       )}
                     >
                       {transaction.type === "EXPENSE" ? (
-                        <ArrowUpRight className="mr-1 h-4 w-4" />
-                      ) : (
                         <ArrowDownRight className="mr-1 h-4 w-4" />
+                      ) : (
+                        <ArrowUpRight className="mr-1 h-4 w-4" />
                       )}
                       ₹{transaction.amount.toFixed(2)}
                     </div>

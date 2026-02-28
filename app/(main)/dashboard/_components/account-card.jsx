@@ -1,8 +1,7 @@
 "use client";
 
-import { ArrowUpRight, ArrowDownRight, CreditCard } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
 import { useEffect } from "react";
 import useFetch from "@/hooks/use-fetch";
 import {
@@ -56,11 +55,13 @@ export function AccountCard({ account }) {
           <CardTitle className="text-sm font-medium capitalize">
             {name}
           </CardTitle>
-          <Switch
-            checked={isDefault}
-            onClick={handleDefaultChange}
-            disabled={updateDefaultLoading}
-          />
+          <div onClick={(e) => e.preventDefault()}>
+            <Switch
+              checked={isDefault}
+              onClick={handleDefaultChange}
+              disabled={updateDefaultLoading}
+            />
+          </div>
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">

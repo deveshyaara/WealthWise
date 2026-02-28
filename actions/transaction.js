@@ -140,7 +140,7 @@ export async function updateTransaction(id, data) {
         userId: user.id,
       },
       include: {
-        account: true,
+        accounts: true,
       },
     });
 
@@ -209,13 +209,22 @@ export async function getUserTransactions(query = {}) {
       throw new Error("User not found");
     }
 
+    // Sanitize query to only allow safe Prisma filter fields
+    const allowedFields = ['type', 'accountId', 'category', 'status', 'isRecurring'];
+    const safeQuery = {};
+    for (const key of allowedFields) {
+      if (query[key] !== undefined) {
+        safeQuery[key] = query[key];
+      }
+    }
+
     const transactions = await db.transactions.findMany({
       where: {
         userId: user.id,
-        ...query,
+        ...safeQuery,
       },
       include: {
-        account: true,
+        accounts: true,
       },
       orderBy: {
         date: "desc",
@@ -230,7 +239,6 @@ export async function getUserTransactions(query = {}) {
 
 // Scan Receipt
 export const scanReceipt = async (formData) => {
-  console.log("Scanned receipt...");
   const { userId } = await auth();
 
   if (!userId) {
@@ -238,31 +246,26 @@ export const scanReceipt = async (formData) => {
   }
 
   const file = formData.get("file");
-  console.log("File received:", file.name, "size:", file.size, "type:", file.type);
 
   if (!file || file.size === 0) {
     return { error: "Image not found" };
   }
 
   try {
-    console.log("Checking Arcjet rate limit...");
-    const decision = await aj.protect(request, {
-      key: "scan-receipt-rate-limit",
-      requested: 10, 
+    const req = await request();
+    const decision = await aj.protect(req, {
+      userId,
+      requested: 1,
     });
 
     if (decision.isDenied()) {
-      console.warn("Arcjet rate limit exceeded. Remaining:", decision.remaining);
       return { error: "Rate limit exceeded. Please try again later." };
     }
-    console.log("Arcjet rate limit check passed. Remaining:", decision.remaining);
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    console.log("Image converted to buffer, size:", buffer.length);
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    console.log("GoogleGenerativeAI initialized.");
 
     const imagePart = {
       inlineData: {
@@ -270,7 +273,6 @@ export const scanReceipt = async (formData) => {
         mimeType: file.type,
       },
     };
-    console.log("Image part created for Gemini API.");
 
     const allModels = [
       "gemini-2.5-flash",
@@ -283,9 +285,7 @@ export const scanReceipt = async (formData) => {
 
     for (const modelName of allModels) {
       try {
-        console.log(`Attempting to use model: ${modelName}`);
         const model = genAI.getGenerativeModel({ model: modelName });
-        console.log(`Model ${modelName} loaded.`);
         
         const prompt = `
           You are an intelligent receipt scanner. Your task is to extract the following information from the receipt image:
@@ -304,17 +304,13 @@ export const scanReceipt = async (formData) => {
 
           If any information is not available, set its value to null. Do not add any extra text or explanations outside of the JSON object.
         `;
-        console.log(`Prompt created for model ${modelName}.`);
 
         const apiResult = await model.generateContent([prompt, imagePart]);
-        console.log(`API call to ${modelName} successful.`);
         
         const response = apiResult.response;
         const text = response.text();
-        console.log(`Raw response from ${modelName}:`, text);
 
         const cleanedText = text.replace(/```json/g, "").replace(/```/g, "").trim();
-        console.log(`Cleaned response from ${modelName}:`, cleanedText);
 
         result = JSON.parse(cleanedText);
         
@@ -343,25 +339,19 @@ export const scanReceipt = async (formData) => {
         }
         
         selectedModel = modelName;
-        console.log(`Successfully parsed JSON from ${modelName}.`);
-        console.log(`Normalized result:`, result);
         break; 
       } catch (error) {
         console.error(`Error with model ${modelName}:`, error.message);
         if (error.message.includes("API key not valid")) {
-          console.error("Terminating attempts due to invalid API key.");
           return { error: "Invalid Gemini API key. Please check your credentials." };
         }
       }
     }
 
     if (!result) {
-      console.error("All Gemini models failed to process the receipt.");
       return { error: "Unable to process receipt with any available model." };
     }
 
-    console.log(`Receipt processed successfully with model: ${selectedModel}`);
-    console.log("Parsed data:", result);
     return { data: result };
 
   } catch (error) {

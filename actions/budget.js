@@ -81,10 +81,13 @@ export async function updateBudget(amount) {
       },
       update: {
         amount,
+        updatedAt: new Date(),
       },
       create: {
+        id: crypto.randomUUID(),
         userId: user.id,
         amount,
+        updatedAt: new Date(),
       },
     });
 

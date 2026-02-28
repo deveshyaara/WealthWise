@@ -47,7 +47,7 @@ export async function getUserAccounts() {
 
     return serializedAccounts;
   } catch (error) {
-    console.error(error.message);
+    throw new Error(error.message);
   }
 }
 
@@ -148,10 +148,11 @@ export async function getDashboardData() {
     throw new Error("User not found");
   }
 
-  // Get all user transactions
+  // Get user transactions (limited for performance)
   const transactions = await db.transactions.findMany({
     where: { userId: user.id },
     orderBy: { date: "desc" },
+    take: 500,
   });
 
   return transactions.map(serializeTransaction);
