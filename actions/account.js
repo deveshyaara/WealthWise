@@ -3,6 +3,7 @@
 import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
+import { safeAdd, roundFinancial } from "@/lib/currency";
 
 const serializeDecimal = (obj) => {
   const serialized = { ...obj };
@@ -25,13 +26,23 @@ export async function getAccountWithTransactions(accountId) {
 
   if (!user) throw new Error("User not found");
 
-  const account = await db.accounts.findUnique({
+  const account = await db.accounts.findFirst({
     where: {
       id: accountId,
       userId: user.id,
     },
     include: {
       transactions: {
+        include: {
+          receipt_attachments: {
+            select: {
+              id: true,
+              fileName: true,
+              fileSize: true,
+              fileType: true,
+            },
+          },
+        },
         orderBy: { date: "desc" },
       },
       _count: {
@@ -67,16 +78,14 @@ export async function bulkDeleteTransactions(transactionIds) {
       },
     });
 
-    // Group transactions by account to update balances
+    // Group transactions by account to update balances with decimal-safe arithmetic
     const accountBalanceChanges = transactions.reduce((acc, transaction) => {
       const amount = typeof transaction.amount === 'object' && transaction.amount.toNumber
         ? transaction.amount.toNumber()
         : Number(transaction.amount);
-      const change =
-        transaction.type === "EXPENSE"
-          ? amount
-          : -amount;
-      acc[transaction.accountId] = (acc[transaction.accountId] || 0) + change;
+      const safeAmt = roundFinancial(amount);
+      const change = transaction.type === "EXPENSE" ? safeAmt : -safeAmt;
+      acc[transaction.accountId] = safeAdd(acc[transaction.accountId] || 0, change);
       return acc;
     }, {});
 
@@ -129,7 +138,19 @@ export async function updateDefaultAccount(accountId) {
 
     // Use a transaction to prevent race conditions
     const account = await db.$transaction(async (tx) => {
-      // First, unset any existing default account
+      // First, verify account ownership
+      const existing = await tx.accounts.findFirst({
+        where: {
+          id: accountId,
+          userId: user.id,
+        },
+      });
+
+      if (!existing) {
+        throw new Error("Account not found or access denied");
+      }
+
+      // Unset any existing default account
       await tx.accounts.updateMany({
         where: {
           userId: user.id,
@@ -142,7 +163,6 @@ export async function updateDefaultAccount(accountId) {
       return await tx.accounts.update({
         where: {
           id: accountId,
-          userId: user.id,
         },
         data: { isDefault: true },
       });

@@ -12,11 +12,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { updateDefaultAccount } from "@/actions/account";
 import { toast } from "sonner";
+import { formatCurrency } from "@/lib/currency";
 
 export function AccountCard({ account }) {
-  const { name, type, balance, id, isDefault } = account;
+  const router = useRouter();
+  const { name, type, balance, id, isDefault, currency } = account;
 
   const {
     loading: updateDefaultLoading,
@@ -39,8 +42,9 @@ export function AccountCard({ account }) {
   useEffect(() => {
     if (updatedAccount?.success) {
       toast.success("Default account updated successfully");
+      router.refresh();
     }
-  }, [updatedAccount]);
+  }, [updatedAccount, router]);
 
   useEffect(() => {
     if (error) {
@@ -65,11 +69,16 @@ export function AccountCard({ account }) {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">
-            ₹{parseFloat(balance).toFixed(2)}
+            {formatCurrency(balance, currency || "USD")}
           </div>
-          <p className="text-xs text-muted-foreground">
-            {type.charAt(0) + type.slice(1).toLowerCase()} Account
-          </p>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <p className="text-xs text-muted-foreground">
+              {type.charAt(0) + type.slice(1).toLowerCase()} Account
+            </p>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted font-semibold uppercase text-muted-foreground">
+              {currency || "USD"}
+            </span>
+          </div>
         </CardContent>
         <CardFooter className="flex justify-between text-sm text-muted-foreground">
           <div className="flex items-center">

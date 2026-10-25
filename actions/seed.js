@@ -1,39 +1,38 @@
 "use server";
 
 import { db } from "@/lib/prisma";
+import { auth } from "@clerk/nextjs/server";
+import { revalidatePath } from "next/cache";
 import { subDays } from "date-fns";
+import crypto from "crypto";
+import { roundFinancial, safeAdd } from "@/lib/currency";
 
-const ACCOUNT_ID = "account-id";
-const USER_ID = "user-id";
-
-// Categories with their typical amount ranges
+// Categories with typical amount ranges
 const CATEGORIES = {
   INCOME: [
-    { name: "salary", range: [5000, 8000] },
-    { name: "freelance", range: [1000, 3000] },
-    { name: "investments", range: [500, 2000] },
-    { name: "other-income", range: [100, 1000] },
+    { name: "salary", range: [4000, 7500] },
+    { name: "freelance", range: [800, 2500] },
+    { name: "investments", range: [300, 1500] },
+    { name: "other-income", range: [100, 800] },
   ],
   EXPENSE: [
-    { name: "housing", range: [1000, 2000] },
-    { name: "transportation", range: [100, 500] },
-    { name: "groceries", range: [200, 600] },
-    { name: "utilities", range: [100, 300] },
-    { name: "entertainment", range: [50, 200] },
-    { name: "food", range: [50, 150] },
-    { name: "shopping", range: [100, 500] },
-    { name: "healthcare", range: [100, 1000] },
-    { name: "education", range: [200, 1000] },
-    { name: "travel", range: [500, 2000] },
+    { name: "housing", range: [800, 1800] },
+    { name: "transportation", range: [80, 400] },
+    { name: "groceries", range: [150, 500] },
+    { name: "utilities", range: [80, 250] },
+    { name: "entertainment", range: [40, 180] },
+    { name: "food", range: [40, 120] },
+    { name: "shopping", range: [80, 400] },
+    { name: "healthcare", range: [50, 600] },
+    { name: "education", range: [100, 800] },
+    { name: "travel", range: [300, 1500] },
   ],
 };
 
-// Helper to generate random amount within a range
 function getRandomAmount(min, max) {
-  return Number((Math.random() * (max - min) + min).toFixed(2));
+  return roundFinancial(Math.random() * (max - min) + min);
 }
 
-// Helper to get random category with amount
 function getRandomCategory(type) {
   const categories = CATEGORIES[type];
   const category = categories[Math.floor(Math.random() * categories.length)];
@@ -41,69 +40,108 @@ function getRandomCategory(type) {
   return { category: category.name, amount };
 }
 
-export async function seedTransactions() {
+export async function seedTransactions(targetAccountId = null) {
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      throw new Error("Unauthorized. Seeding requires an authenticated user session.");
+    }
+
+    // Safety guard for production environments
+    if (process.env.NODE_ENV === "production" && !process.env.ALLOW_PRODUCTION_SEED) {
+      throw new Error("Database seeding is disabled in production environments.");
+    }
+
+    const user = await db.users.findUnique({
+      where: { clerkUserId: userId },
+      include: { accounts: true },
+    });
+
+    if (!user) {
+      throw new Error("User record not found in database. Please log in first.");
+    }
+
+    // Determine target account
+    let account = null;
+    if (targetAccountId) {
+      account = user.accounts.find((a) => a.id === targetAccountId);
+    }
+    if (!account) {
+      account = user.accounts.find((a) => a.isDefault) || user.accounts[0];
+    }
+
+    // If user has no account, create one for demonstration
+    if (!account) {
+      account = await db.accounts.create({
+        data: {
+          id: crypto.randomUUID(),
+          name: "Main Checking",
+          type: "CURRENT",
+          balance: 0,
+          isDefault: true,
+          userId: user.id,
+          updatedAt: new Date(),
+        },
+      });
+    }
+
     // Generate 90 days of transactions
     const transactions = [];
-    let totalBalance = 0;
+    let netBalance = 0;
 
     for (let i = 90; i >= 0; i--) {
       const date = subDays(new Date(), i);
+      const count = Math.floor(Math.random() * 3) + 1;
 
-      // Generate 1-3 transactions per day
-      const transactionsPerDay = Math.floor(Math.random() * 3) + 1;
-
-      for (let j = 0; j < transactionsPerDay; j++) {
-        // 40% chance of income, 60% chance of expense
-        const type = Math.random() < 0.4 ? "INCOME" : "EXPENSE";
+      for (let j = 0; j < count; j++) {
+        const type = Math.random() < 0.35 ? "INCOME" : "EXPENSE";
         const { category, amount } = getRandomCategory(type);
 
-        const transaction = {
+        transactions.push({
           id: crypto.randomUUID(),
           type,
           amount,
-          description: `${
-            type === "INCOME" ? "Received" : "Paid for"
-          } ${category}`,
+          description: `${type === "INCOME" ? "Received" : "Paid for"} ${category}`,
           date,
           category,
           status: "COMPLETED",
-          userId: USER_ID,
-          accountId: ACCOUNT_ID,
+          userId: user.id,
+          accountId: account.id,
           createdAt: date,
           updatedAt: date,
-        };
+        });
 
-        totalBalance += type === "INCOME" ? amount : -amount;
-        transactions.push(transaction);
+        const delta = type === "INCOME" ? amount : -amount;
+        netBalance = safeAdd(netBalance, delta);
       }
     }
 
-    // Insert transactions in batches and update account balance
+    // Replace account transactions and set balance atomically
     await db.$transaction(async (tx) => {
-      // Clear existing transactions
       await tx.transactions.deleteMany({
-        where: { accountId: ACCOUNT_ID },
+        where: { accountId: account.id, userId: user.id },
       });
 
-      // Insert new transactions
       await tx.transactions.createMany({
         data: transactions,
       });
 
-      // Update account balance
       await tx.accounts.update({
-        where: { id: ACCOUNT_ID },
-        data: { balance: totalBalance },
+        where: { id: account.id },
+        data: { balance: Math.max(0, netBalance) },
       });
     });
 
+    revalidatePath("/dashboard");
+    revalidatePath(`/account/${account.id}`);
+
     return {
       success: true,
-      message: `Created ${transactions.length} transactions`,
+      message: `Successfully seeded ${transactions.length} transactions for account '${account.name}'.`,
+      accountId: account.id,
     };
   } catch (error) {
-    console.error("Error seeding transactions:", error);
+    console.error("Error seeding transactions:", error.message);
     return { success: false, error: error.message };
   }
 }

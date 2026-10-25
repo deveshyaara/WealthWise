@@ -28,9 +28,9 @@ export default function RootLayout({ children }) {
           <main className="min-h-screen">{children}</main>
           <Toaster richColors />
 
-          <footer className="bg-blue-50 py-12">
-            <div className="container mx-auto px-4 text-center text-gray-600">
-              <p>Enhance your finance journey with AI</p>
+          <footer className="border-t bg-muted/30 py-8">
+            <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
+              <p>© {new Date().getFullYear()} WealthWise • Intelligent AI Personal Finance Platform</p>
             </div>
           </footer>
         </body>

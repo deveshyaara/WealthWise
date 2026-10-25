@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { formatCurrency, safeAdd, safeSubtract } from "@/lib/currency";
 
 const DATE_RANGES = {
   "7D": { label: "Last 7 Days", days: 7 },
@@ -29,7 +30,7 @@ const DATE_RANGES = {
   ALL: { label: "All Time", days: null },
 };
 
-export function AccountChart({ transactions }) {
+export function AccountChart({ transactions, currency = "USD" }) {
   const [dateRange, setDateRange] = useState("1M");
 
   const filteredData = useMemo(() => {
@@ -44,16 +45,16 @@ export function AccountChart({ transactions }) {
       (t) => new Date(t.date) >= startDate && new Date(t.date) <= endOfDay(now)
     );
 
-    // Group transactions by date
+    // Group transactions by date with decimal-safe arithmetic
     const grouped = filtered.reduce((acc, transaction) => {
       const date = format(new Date(transaction.date), "MMM dd");
       if (!acc[date]) {
         acc[date] = { date, income: 0, expense: 0 };
       }
       if (transaction.type === "INCOME") {
-        acc[date].income += transaction.amount;
+        acc[date].income = safeAdd(acc[date].income, transaction.amount);
       } else {
-        acc[date].expense += transaction.amount;
+        acc[date].expense = safeAdd(acc[date].expense, transaction.amount);
       }
       return acc;
     }, {});
@@ -68,12 +69,14 @@ export function AccountChart({ transactions }) {
   const totals = useMemo(() => {
     return filteredData.reduce(
       (acc, day) => ({
-        income: acc.income + day.income,
-        expense: acc.expense + day.expense,
+        income: safeAdd(acc.income, day.income),
+        expense: safeAdd(acc.expense, day.expense),
       }),
       { income: 0, expense: 0 }
     );
   }, [filteredData]);
+
+  const netTotal = safeSubtract(totals.income, totals.expense);
 
   return (
     <Card>
@@ -99,25 +102,25 @@ export function AccountChart({ transactions }) {
           <div className="text-center">
             <p className="text-muted-foreground">Total Income</p>
             <p className="text-lg font-bold text-green-500">
-              ₹{totals.income.toFixed(2)}
+              {formatCurrency(totals.income, currency)}
             </p>
           </div>
           <div className="text-center">
             <p className="text-muted-foreground">Total Expenses</p>
             <p className="text-lg font-bold text-red-500">
-              ₹{totals.expense.toFixed(2)}
+              {formatCurrency(totals.expense, currency)}
             </p>
           </div>
           <div className="text-center">
             <p className="text-muted-foreground">Net</p>
             <p
               className={`text-lg font-bold ${
-                totals.income - totals.expense >= 0
+                netTotal >= 0
                   ? "text-green-500"
                   : "text-red-500"
               }`}
             >
-              ₹{(totals.income - totals.expense).toFixed(2)}
+              {formatCurrency(netTotal, currency)}
             </p>
           </div>
         </div>
@@ -138,10 +141,10 @@ export function AccountChart({ transactions }) {
                 fontSize={12}
                 tickLine={false}
                 axisLine={false}
-                tickFormatter={(value) => `₹${value}`}
+                tickFormatter={(value) => formatCurrency(value, currency, { maximumFractionDigits: 0 })}
               />
               <Tooltip
-                formatter={(value) => [`₹${value}`, undefined]}
+                formatter={(value) => [formatCurrency(value, currency), undefined]}
                 contentStyle={{
                   backgroundColor: "hsl(var(--popover))",
                   border: "1px solid hsl(var(--border))",

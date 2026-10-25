@@ -5,6 +5,8 @@ import { db } from "@/lib/prisma";
 import { request } from "@arcjet/next";
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
+import crypto from "crypto";
+import { roundFinancial } from "@/lib/currency";
 
 const serializeTransaction = (obj) => {
   const serialized = { ...obj };
@@ -90,9 +92,9 @@ export async function createAccount(data) {
       throw new Error("User not found");
     }
 
-    // Convert balance to float before saving
-    const balanceFloat = parseFloat(data.balance);
-    if (isNaN(balanceFloat)) {
+    // Convert balance to valid float before saving
+    const balanceFloat = roundFinancial(data.balance);
+    if (isNaN(balanceFloat) || balanceFloat < 0) {
       throw new Error("Invalid balance amount");
     }
 
@@ -101,29 +103,36 @@ export async function createAccount(data) {
       where: { userId: user.id },
     });
 
-    // If it's the first account, make it default regardless of user input
-    // If not, use the user's preference
     const shouldBeDefault =
       existingAccounts.length === 0 ? true : data.isDefault;
 
-    // If this account should be default, unset other default accounts
-    if (shouldBeDefault) {
-      await db.accounts.updateMany({
-        where: { userId: user.id, isDefault: true },
-        data: { isDefault: false },
-      });
-    }
+    // Validate and assign ISO 4217 currency
+    const supportedCurrencies = ["USD", "EUR", "GBP", "INR", "CAD", "AUD", "JPY"];
+    const currency =
+      data.currency && supportedCurrencies.includes(data.currency.toUpperCase())
+        ? data.currency.toUpperCase()
+        : "USD";
 
-    // Create new account
-    const account = await db.accounts.create({
-      data: {
-        id: crypto.randomUUID(),
-        ...data,
-        balance: balanceFloat,
-        userId: user.id,
-        isDefault: shouldBeDefault, // Override the isDefault based on our logic
-        updatedAt: new Date(),
-      },
+    // Create new account and update default status atomically
+    const account = await db.$transaction(async (tx) => {
+      if (shouldBeDefault) {
+        await tx.accounts.updateMany({
+          where: { userId: user.id, isDefault: true },
+          data: { isDefault: false },
+        });
+      }
+
+      return await tx.accounts.create({
+        data: {
+          id: crypto.randomUUID(),
+          ...data,
+          currency,
+          balance: balanceFloat,
+          userId: user.id,
+          isDefault: shouldBeDefault,
+          updatedAt: new Date(),
+        },
+      });
     });
 
     // Serialize the account before returning

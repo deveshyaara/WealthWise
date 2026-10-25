@@ -22,6 +22,7 @@ const useFetch = (cb) => {
         setData(response);
         setError(null);
       }
+      return response;
     } catch (error) {
       if (isMountedRef.current) {
         setError(error);

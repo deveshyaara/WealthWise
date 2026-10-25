@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { formatCurrency, safeAdd } from "@/lib/currency";
 
 const COLORS = [
   "#FF6B6B",
@@ -36,6 +37,9 @@ export function DashboardOverview({ accounts, transactions }) {
   const [selectedAccountId, setSelectedAccountId] = useState(
     accounts.find((a) => a.isDefault)?.id || accounts[0]?.id
   );
+
+  const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
+  const currency = selectedAccount?.currency || "USD";
 
   // Filter transactions for selected account
   const accountTransactions = transactions.filter(
@@ -58,13 +62,10 @@ export function DashboardOverview({ accounts, transactions }) {
     );
   });
 
-  // Group expenses by category
+  // Group expenses by category using safe decimal math
   const expensesByCategory = currentMonthExpenses.reduce((acc, transaction) => {
     const category = transaction.category;
-    if (!acc[category]) {
-      acc[category] = 0;
-    }
-    acc[category] += transaction.amount;
+    acc[category] = safeAdd(acc[category] || 0, transaction.amount);
     return acc;
   }, {});
 
@@ -88,13 +89,13 @@ export function DashboardOverview({ accounts, transactions }) {
             value={selectedAccountId}
             onValueChange={setSelectedAccountId}
           >
-            <SelectTrigger className="w-[140px]">
+            <SelectTrigger className="w-[160px]">
               <SelectValue placeholder="Select account" />
             </SelectTrigger>
             <SelectContent>
               {accounts.map((account) => (
                 <SelectItem key={account.id} value={account.id}>
-                  {account.name}
+                  {account.name} ({account.currency || "USD"})
                 </SelectItem>
               ))}
             </SelectContent>
@@ -123,7 +124,7 @@ export function DashboardOverview({ accounts, transactions }) {
                   <div className="flex items-center gap-2">
                     <div
                       className={cn(
-                        "flex items-center",
+                        "flex items-center text-sm font-semibold",
                         transaction.type === "EXPENSE"
                           ? "text-red-500"
                           : "text-green-500"
@@ -134,7 +135,7 @@ export function DashboardOverview({ accounts, transactions }) {
                       ) : (
                         <ArrowUpRight className="mr-1 h-4 w-4" />
                       )}
-                      ₹{transaction.amount.toFixed(2)}
+                      {formatCurrency(transaction.amount, currency)}
                     </div>
                   </div>
                 </div>
@@ -167,7 +168,9 @@ export function DashboardOverview({ accounts, transactions }) {
                     outerRadius={80}
                     fill="#8884d8"
                     dataKey="value"
-                    label={({ name, value }) => `${name}: ₹${value.toFixed(2)}`}
+                    label={({ name, value }) =>
+                      `${name}: ${formatCurrency(value, currency, { maximumFractionDigits: 0 })}`
+                    }
                   >
                     {pieChartData.map((entry, index) => (
                       <Cell
@@ -177,7 +180,7 @@ export function DashboardOverview({ accounts, transactions }) {
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={(value) => `₹${value.toFixed(2)}`}
+                    formatter={(value) => [formatCurrency(value, currency), undefined]}
                     contentStyle={{
                       backgroundColor: "hsl(var(--popover))",
                       border: "1px solid hsl(var(--border))",

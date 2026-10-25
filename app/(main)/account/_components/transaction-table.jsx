@@ -12,9 +12,12 @@ import {
   ChevronRight,
   RefreshCw,
   Clock,
+  Download,
+  FileText,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { ReceiptModal } from "./receipt-modal";
 
 import {
   Table,
@@ -54,6 +57,7 @@ import { bulkDeleteTransactions } from "@/actions/account";
 import useFetch from "@/hooks/use-fetch";
 import { BarLoader } from "react-spinners";
 import { useRouter } from "next/navigation";
+import { formatCurrency } from "@/lib/currency";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -64,8 +68,9 @@ const RECURRING_INTERVALS = {
   YEARLY: "Yearly",
 };
 
-export function TransactionTable({ transactions }) {
+export function TransactionTable({ transactions, currency = "USD" }) {
   const [selectedIds, setSelectedIds] = useState([]);
+  const [activeReceiptTx, setActiveReceiptTx] = useState(null);
   const [sortConfig, setSortConfig] = useState({
     field: "date",
     direction: "desc",
@@ -175,14 +180,73 @@ export function TransactionTable({ transactions }) {
     )
       return;
 
-    deleteFn(selectedIds);
+    await deleteFn(selectedIds);
+    setSelectedIds([]);
   };
 
   useEffect(() => {
     if (deleted && !deleteLoading) {
       toast.success("Transactions deleted successfully");
+      router.refresh();
     }
-  }, [deleted, deleteLoading]);
+  }, [deleted, deleteLoading, router]);
+
+  const sanitizeCSVField = (val) => {
+    if (val === null || val === undefined) return '""';
+    let str = String(val);
+    // Formula injection mitigation (OWASP CSV Injection defense)
+    if (/^[=+\-@\t\r]/.test(str)) {
+      str = "'" + str;
+    }
+    return `"${str.replace(/"/g, '""')}"`;
+  };
+
+  const handleExportCSV = () => {
+    if (!filteredAndSortedTransactions || filteredAndSortedTransactions.length === 0) {
+      toast.error("No transactions to export");
+      return;
+    }
+
+    const headers = [
+      "Date",
+      "Description",
+      "Category",
+      "Type",
+      "Amount",
+      "Currency",
+      "Recurring",
+      "Interval",
+      "Has Receipt",
+    ];
+    const rows = filteredAndSortedTransactions.map((t) => [
+      sanitizeCSVField(format(new Date(t.date), "yyyy-MM-dd")),
+      sanitizeCSVField(t.description || "Untitled"),
+      sanitizeCSVField(t.category || "General"),
+      sanitizeCSVField(t.type),
+      sanitizeCSVField(t.amount),
+      sanitizeCSVField(currency || "USD"),
+      sanitizeCSVField(t.isRecurring ? "Yes" : "No"),
+      sanitizeCSVField(t.recurringInterval || "N/A"),
+      sanitizeCSVField(t.receiptUrl || t.receipt_attachments ? "Yes" : "No"),
+    ]);
+
+    const csvContent =
+      "data:text/csv;charset=utf-8," +
+      [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute(
+      "download",
+      `wealthwise_transactions_${format(new Date(), "yyyy-MM-dd")}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success(
+      `Exported ${filteredAndSortedTransactions.length} transactions to CSV`
+    );
+  };
 
   const handleClearFilters = () => {
     setSearchTerm("");
@@ -262,6 +326,18 @@ export function TransactionTable({ transactions }) {
             </div>
           )}
 
+          {/* Export CSV Button */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportCSV}
+            className="flex items-center gap-1.5"
+            title="Export filtered transactions to CSV"
+          >
+            <Download className="h-4 w-4" />
+            <span className="hidden sm:inline">Export CSV</span>
+          </Button>
+
           {(searchTerm || typeFilter || recurringFilter) && (
             <Button
               variant="outline"
@@ -332,6 +408,7 @@ export function TransactionTable({ transactions }) {
                     ))}
                 </div>
               </TableHead>
+              <TableHead className="w-[70px] text-center">Receipt</TableHead>
               <TableHead>Recurring</TableHead>
               <TableHead className="w-[50px]" />
             </TableRow>
@@ -340,7 +417,7 @@ export function TransactionTable({ transactions }) {
             {paginatedTransactions.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={7}
+                  colSpan={8}
                   className="text-center text-muted-foreground"
                 >
                   No transactions found
@@ -378,7 +455,22 @@ export function TransactionTable({ transactions }) {
                     )}
                   >
                     {transaction.type === "EXPENSE" ? "-" : "+"}
-                    ₹{transaction.amount.toFixed(2)}
+                    {formatCurrency(transaction.amount, currency)}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {transaction.receiptUrl || transaction.receipt_attachments ? (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-primary hover:bg-primary/10 transition-colors"
+                        title="View attached receipt"
+                        onClick={() => setActiveReceiptTx(transaction)}
+                      >
+                        <FileText className="h-4 w-4" />
+                      </Button>
+                    ) : (
+                      <span className="text-muted-foreground/30 text-xs">-</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     {transaction.isRecurring ? (
@@ -425,6 +517,14 @@ export function TransactionTable({ transactions }) {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        {(transaction.receiptUrl || transaction.receipt_attachments) && (
+                          <DropdownMenuItem
+                            onClick={() => setActiveReceiptTx(transaction)}
+                          >
+                            <FileText className="mr-2 h-4 w-4 text-primary" />
+                            View Receipt
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem
                           onClick={() =>
                             router.push(
@@ -450,6 +550,17 @@ export function TransactionTable({ transactions }) {
           </TableBody>
         </Table>
       </div>
+
+      {activeReceiptTx && (
+        <ReceiptModal
+          transaction={activeReceiptTx}
+          isOpen={!!activeReceiptTx}
+          onClose={() => setActiveReceiptTx(null)}
+          onReceiptDeleted={() => {
+            router.refresh();
+          }}
+        />
+      )}
 
       {/* Pagination */}
       {totalPages > 1 && (

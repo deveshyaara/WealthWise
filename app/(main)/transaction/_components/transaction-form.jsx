@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { CalendarIcon, Loader2 } from "lucide-react";
+import { CalendarIcon, Loader2, Paperclip } from "lucide-react";
 import { format } from "date-fns";
 import { useRouter, useSearchParams } from "next/navigation";
 import useFetch from "@/hooks/use-fetch";
@@ -40,6 +40,8 @@ export function AddTransactionForm({
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("edit");
+  const [receipt, setReceipt] = useState(null);
+  const [existingReceiptRemoved, setExistingReceiptRemoved] = useState(false);
 
   const {
     register,
@@ -85,6 +87,14 @@ export function AddTransactionForm({
     const formData = {
       ...data,
       amount: parseFloat(data.amount),
+      ...(receipt && {
+        receipt: {
+          base64: receipt.base64,
+          name: receipt.name,
+          type: receipt.type,
+        },
+      }),
+      ...(existingReceiptRemoved && { removeReceipt: true }),
     };
 
     if (editMode) {
@@ -96,8 +106,6 @@ export function AddTransactionForm({
 
   const handleScanComplete = useCallback((scannedData) => {
     if (scannedData) {
-      console.log("Scanned data received in form:", scannedData);
-      
       // Safely set amount if it exists and is valid
       if (scannedData.amount !== null && scannedData.amount !== undefined) {
         setValue("amount", scannedData.amount.toString());
@@ -110,7 +118,7 @@ export function AddTransactionForm({
           if (!isNaN(parsedDate.getTime())) {
             setValue("date", parsedDate);
           }
-        } catch (error) {
+        } catch (_error) {
           console.error("Invalid date format:", scannedData.date);
         }
       }
@@ -129,8 +137,6 @@ export function AddTransactionForm({
       if (scannedData.category) {
         setValue("category", scannedData.category);
       }
-      
-      toast.success("Receipt scanned successfully");
     }
   }, [setValue]);
 
@@ -142,6 +148,7 @@ export function AddTransactionForm({
           : "Transaction created successfully"
       );
       reset();
+      router.refresh();
       router.push(`/account/${transactionResult.data.accountId}`);
     }
   }, [transactionResult, transactionLoading, editMode, reset, router]);
@@ -149,6 +156,8 @@ export function AddTransactionForm({
   const type = watch("type");
   const isRecurring = watch("isRecurring");
   const date = watch("date");
+  const selectedAccountId = watch("accountId");
+  const selectedAccount = accounts.find((ac) => ac.id === selectedAccountId);
 
   const filteredCategories = categories.filter(
     (category) => category.type === type
@@ -156,8 +165,44 @@ export function AddTransactionForm({
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-      {/* Receipt Scanner - Only show in create mode */}
-      {!editMode && <ReceiptScanner onScanComplete={handleScanComplete} />}
+      {/* Receipt Scanner / Attachment Management */}
+      {!editMode ? (
+        <ReceiptScanner
+          onScanComplete={handleScanComplete}
+          onReceiptChange={setReceipt}
+        />
+      ) : initialData?.receiptUrl && !existingReceiptRemoved && !receipt ? (
+        <div className="flex items-center justify-between p-3.5 rounded-lg border bg-card/60 shadow-sm text-sm">
+          <div className="flex items-center gap-2.5">
+            <Paperclip className="h-4 w-4 text-primary" />
+            <div>
+              <span className="font-medium text-foreground">Attached Receipt</span>
+              <a
+                href={initialData.receiptUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block text-xs text-primary underline hover:opacity-80"
+              >
+                View receipt image
+              </a>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="text-destructive hover:text-destructive h-8 text-xs"
+            onClick={() => setExistingReceiptRemoved(true)}
+          >
+            Remove Receipt
+          </Button>
+        </div>
+      ) : (
+        <ReceiptScanner
+          onScanComplete={handleScanComplete}
+          onReceiptChange={setReceipt}
+        />
+      )}
 
       {/* Type */}
       <div className="space-y-2">
@@ -182,7 +227,9 @@ export function AddTransactionForm({
       {/* Amount and Account */}
       <div className="grid gap-6 md:grid-cols-2">
         <div className="space-y-2">
-          <label className="text-sm font-medium">Amount</label>
+          <label className="text-sm font-medium">
+            Amount {selectedAccount?.currency ? `(${selectedAccount.currency})` : ""}
+          </label>
           <Input
             type="number"
             step="0.01"

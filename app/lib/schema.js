@@ -3,6 +3,7 @@ import { z } from "zod";
 export const accountSchema = z.object({
   name: z.string().min(1, "Name is required"),
   type: z.enum(["CURRENT", "SAVINGS"]),
+  currency: z.enum(["USD", "EUR", "GBP", "INR", "CAD", "AUD", "JPY"]).default("USD"),
   balance: z.string().min(1, "Initial balance is required").refine(
     (val) => !isNaN(parseFloat(val)) && parseFloat(val) >= 0,
     { message: "Balance must be a valid non-negative number" }

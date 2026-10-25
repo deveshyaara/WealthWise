@@ -42,6 +42,7 @@ export function CreateAccountDrawer({ children }) {
     defaultValues: {
       name: "",
       type: "CURRENT",
+      currency: "USD",
       balance: "",
       isDefault: false,
     },
@@ -124,10 +125,39 @@ export function CreateAccountDrawer({ children }) {
 
             <div className="space-y-2">
               <label
+                htmlFor="currency"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                Account Currency
+              </label>
+              <Select
+                onValueChange={(value) => setValue("currency", value)}
+                defaultValue={watch("currency") || "USD"}
+              >
+                <SelectTrigger id="currency">
+                  <SelectValue placeholder="Select currency" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="USD">USD ($ - US Dollar)</SelectItem>
+                  <SelectItem value="EUR">EUR (€ - Euro)</SelectItem>
+                  <SelectItem value="GBP">GBP (£ - British Pound)</SelectItem>
+                  <SelectItem value="INR">INR (₹ - Indian Rupee)</SelectItem>
+                  <SelectItem value="CAD">CAD (CA$ - Canadian Dollar)</SelectItem>
+                  <SelectItem value="AUD">AUD (AU$ - Australian Dollar)</SelectItem>
+                  <SelectItem value="JPY">JPY (¥ - Japanese Yen)</SelectItem>
+                </SelectContent>
+              </Select>
+              {errors.currency && (
+                <p className="text-sm text-red-500">{errors.currency.message}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label
                 htmlFor="balance"
                 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
               >
-                Initial Balance
+                Initial Balance ({watch("currency") || "USD"})
               </label>
               <Input
                 id="balance"

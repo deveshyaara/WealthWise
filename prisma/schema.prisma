@@ -9,16 +9,18 @@ datasource db {
 }
 
 model accounts {
-  id           String         @id
-  name         String
-  type         AccountType
-  balance      Decimal        @default(0)
-  isDefault    Boolean        @default(false)
-  userId       String
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime
-  users        users          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transactions transactions[]
+  id                String              @id
+  name              String
+  type              AccountType
+  balance           Decimal             @default(0)
+  currency          String              @default("USD")
+  isDefault         Boolean             @default(false)
+  userId            String
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime
+  users             users               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions      transactions[]
+  budget_categories budget_categories[]
 
   @@index([userId])
 }
@@ -35,41 +37,78 @@ model budgets {
   @@index([userId])
 }
 
+model budget_categories {
+  id        String    @id @default(cuid())
+  amount    Decimal
+  category  String
+  accountId String?
+  userId    String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  users     users     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accounts  accounts? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, category, accountId])
+  @@index([userId])
+  @@index([accountId])
+}
+
 model transactions {
-  id                String             @id
-  type              TransactionType
-  amount            Decimal
-  description       String?
-  date              DateTime
-  receiptUrl        String?
-  isRecurring       Boolean            @default(false)
-  recurringInterval RecurringInterval?
-  nextRecurringDate DateTime?
-  status            TransactionStatus  @default(COMPLETED)
-  userId            String
-  accountId         String
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime
-  category          String
-  lastProcessed     DateTime?
-  accounts          accounts           @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  users             users              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                  String               @id
+  type                TransactionType
+  amount              Decimal
+  description         String?
+  date                DateTime
+  receiptUrl          String?
+  isRecurring         Boolean              @default(false)
+  recurringInterval   RecurringInterval?
+  nextRecurringDate   DateTime?
+  status              TransactionStatus    @default(COMPLETED)
+  userId              String
+  accountId           String
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime
+  category            String
+  lastProcessed       DateTime?
+  accounts            accounts             @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  users               users                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  receipt_attachments receipt_attachments?
 
   @@index([accountId])
   @@index([userId])
 }
 
+model receipt_attachments {
+  id            String       @id @default(cuid())
+  transactionId String       @unique
+  userId        String
+  fileName      String
+  fileType      String
+  fileSize      Int
+  storagePath   String?
+  fileData      Bytes?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  transactions  transactions @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  users         users        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([transactionId])
+}
+
 model users {
-  id           String         @id
-  clerkUserId  String         @unique
-  email        String         @unique
-  name         String?
-  imageUrl     String?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime
-  accounts     accounts[]
-  budgets      budgets?
-  transactions transactions[]
+  id                  String                @id
+  clerkUserId         String                @unique
+  email               String                @unique
+  name                String?
+  imageUrl            String?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime
+  accounts            accounts[]
+  budgets             budgets?
+  budget_categories   budget_categories[]
+  transactions        transactions[]
+  receipt_attachments receipt_attachments[]
 }
 
 enum AccountType {
